@@ -1,0 +1,44 @@
+#!/usr/local/bin/python3
+
+import ftplib
+import json
+import os
+
+
+def retrieve(host, files):
+    ftp = ftplib.FTP(host)
+    ftp.set_pasv("true")
+    ftp.login()
+
+    for file in files:
+        file_path = os.path.join("/home/ftp_gsmap/results", file[1:])
+        dir_name = os.path.dirname(file_path)
+        print(file_path)
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+        with open(file_path, "wb+") as f:
+            ftp.retrbinary("RETR {}".format(file), f.write)
+        os.chmod(file_path, 766)
+
+    ftp.close()
+
+
+def list_files():
+    with open("/etc/ftp_gsmap.settings.json") as f:
+        settings_text = f.read()
+        settings = json.loads(settings_text)
+        host = settings["host"]
+        root_path = settings["root_path"]
+
+    ftp = ftplib.FTP(host)
+    ftp.set_pasv("true")
+    ftp.login()
+
+    file_list = ftp.nlst(root_path)
+    retrieve(host, file_list)
+
+    ftp.close()
+
+
+if __name__ == "__main__":
+    list_files()
