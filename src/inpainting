@@ -1,0 +1,85 @@
+#!/usr/local/bin/python3
+
+import glob
+import json
+import numpy as np
+from PIL import Image as PILImage
+import cv2
+import matplotlib.pyplot as plt
+import inspect
+import netCDF4
+
+
+def load_settings():
+    with open("/etc/ftp_gsmap.settings.json") as f:
+        settings_text = f.read()
+        settings = json.loads(settings_text)
+
+    return settings
+
+
+def list_files(inpainting_target_filetypes, dst_filetype):
+    src_file_list = []
+    for filetype in inpainting_target_filetypes:
+        src_file_list += glob.glob(
+            "/home/ftp_gsmap/results/**/*{}".format(filetype), recursive=True
+        )
+
+    exist_file_list = glob.glob(
+        "/home/ftp_gsmap/results/**/*{}".format(dst_filetype), recursive=True
+    )
+
+    target_file_list = [
+        f
+        for f in src_file_list
+        if not ("{}.inpainted{}".format(f, dst_filetype) in exist_file_list)
+    ]
+    return target_file_list
+
+
+def load_from_nc4(file):
+    nc = netCDF4.Dataset(file, "r")
+    nc_src_list = [tb.data.astype("uint16") for tb in nc.variables["Tb"]]
+    nc_mask_list = [tb.mask.astype("uint8") for tb in nc.variables["Tb"]]
+
+    return nc_src_list, nc_mask_list
+
+
+def save_as_png(image, file):
+    nc_img = PILImage.fromarray(image, "L")
+    nc_img.save(file)
+
+
+def main():
+    """
+    file = "/home/ftp_gsmap/results/merg_2023010100_4km-pixel.nc4"
+    nc_src, nc_mask = load_from_nc4(file)
+    nc_src = cv2.resize(nc_src, None, fx=0.4, fy=0.4)
+    nc_mask = cv2.resize(nc_mask, nc_src.shape[::-1])
+
+    nc_inpainted = cv2.inpaint(nc_src, nc_mask, 3, cv2.INPAINT_TELEA)
+
+    save_as_png(nc_src, "{}.png".format(file))
+    save_as_png(nc_inpainted, "{}.inpainted.png".format(file))
+    """
+    settings = load_settings()
+    inpainting_target_filetypes = settings["inpainting_target_filetypes"]
+    dst_filetype = settings["dst_filetype"]
+
+    target_files = list_files(inpainting_target_filetypes, dst_filetype)
+    for file in target_files:
+        print("loading: {}".format(file))
+        nc_src_list, nc_mask_list = load_from_nc4(file)
+        for t, (nc_src, nc_mask) in enumerate(zip(nc_src_list, nc_mask_list)):
+            nc_src = cv2.resize(nc_src, None, fx=0.4, fy=0.4)
+            nc_mask = cv2.resize(nc_mask, nc_src.shape[::-1])
+
+            print("inpainting: {}".format(file))
+            # nc_inpainted = cv2.inpaint(nc_src, nc_mask, 3, cv2.INPAINT_TELEA)
+            save_as_png(nc_src, "{}.png".format(file))
+            # save_as_png(nc_inpainted, "{}.inpainted.png".format(file))
+            print("saved: {}".format(file))
+
+
+if __name__ == "__main__":
+    main()

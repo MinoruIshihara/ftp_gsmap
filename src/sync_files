@@ -3,6 +3,15 @@
 import ftplib
 import json
 import os
+import glob
+
+
+def load_settings():
+    with open("/etc/ftp_gsmap.settings.json") as f:
+        settings_text = f.read()
+        settings = json.loads(settings_text)
+
+    return settings
 
 
 def retrieve(host, files):
@@ -13,32 +22,42 @@ def retrieve(host, files):
     for file in files:
         file_path = os.path.join("/home/ftp_gsmap/results", file[1:])
         dir_name = os.path.dirname(file_path)
-        print(file_path)
         if not os.path.exists(dir_name):
             os.makedirs(dir_name)
         with open(file_path, "wb+") as f:
             ftp.retrbinary("RETR {}".format(file), f.write)
         os.chmod(file_path, 766)
+        print(file_path)
 
     ftp.close()
 
 
-def list_files():
-    with open("/etc/ftp_gsmap.settings.json") as f:
-        settings_text = f.read()
-        settings = json.loads(settings_text)
-        host = settings["host"]
-        root_path = settings["root_path"]
-
+def list_files(host, root_path, sync_target_filetypes):
     ftp = ftplib.FTP(host)
     ftp.set_pasv("true")
     ftp.login()
-
-    file_list = ftp.nlst(root_path)
-    retrieve(host, file_list)
-
+    remote_file_list = ftp.nlst(root_path)
     ftp.close()
+
+    local_file_list = []
+    for filetype in sync_target_filetypes:
+        local_file_list += glob.glob(
+            "/home/ftp_gsmap/results/**/*{}".format(filetype), recursive=True
+        )
+
+    target_file_list = [
+        f
+        for f in remote_file_list
+        if not ("/home/ftp_gsmap/results{}".format(f) in local_file_list)
+    ]
+    return target_file_list
 
 
 if __name__ == "__main__":
-    list_files()
+    settings = load_settings()
+    host = settings["host"]
+    root_path = settings["root_path"]
+    sync_target_filetypes = settings["sync_target_filetypes"]
+
+    target_file_list = list_files(host, root_path, sync_target_filetypes)
+    retrieve(host, target_file_list)
